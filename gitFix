@@ -1,0 +1,61 @@
+import vk_api
+from urllib.request import urlretrieve
+from vk_api.longpoll import VkLongPoll, VkEventType
+from vk_api import VkUpload
+import moviepy.editor as mp
+from moviepy.editor import *
+import os
+
+# создаём объект токен для работы с ботом - авторизация
+
+vk_session = vk_api.VkApi(token='')
+longpoll = VkLongPoll(vk_session) # для обмена информацией с ВК
+upload = VkUpload(vk_session) # для работы с документами
+vk = vk_session.get_api() # для упрощённой работы с API
+for event in longpoll.listen(): # прослушиваем сервер
+    if event.type == VkEventType.MESSAGE_NEW and event.attachments and event.to_me: # если прислали новое сообщение с документом
+        if 'attach1_type' in event.attachments and event.attachments['attach1_type'] == 'doc':
+            docInfo = vk.messages.getHistoryAttachments( # берём последнее сообщение с документом
+                peer_id = event.peer_id,
+                count = 1,
+                start_from = str(event.message_id),
+                media_type = 'doc'
+            )
+            docInfo = docInfo['items'][0]['attachment']['doc'] # присваиваем ему данные словаря items->0->attachments->doc
+            if docInfo['ext'] == 'gif': # если документ гиф формата
+                location = 'D:\\1\\gifFolder\\'
+                uploadDocName = docInfo['title']
+                urlretrieve(docInfo['url'], location + uploadDocName) # скачиваем
+                clip = mp.VideoFileClip(location + uploadDocName)
+                clip.write_videofile(location + 'myvideo.avi', audio=False, codec='png')
+                clip = (VideoFileClip(location + 'myvideo.avi'))
+                clip.write_gif(location + "output.gif", program='imageio', opt='nq')
+                doc = upload.document_message(
+                    doc = location + "output.gif",
+                    title = uploadDocName,
+                    peer_id = event.peer_id
+                )
+                owner_id = doc['doc']['owner_id']
+                doc_id = doc['doc']['id']
+                attachment = f'doc{owner_id}_{doc_id}'
+                vk.messages.send(
+                    peer_id = event.peer_id,
+                    random_id = 0,
+                    attachment = attachment,
+                    message = 'Готово!'
+                )
+                os.remove(location + 'myvideo.avi')
+                os.remove(location + "output.gif")
+                os.remove(location + uploadDocName)
+            else:
+                vk.messages.send(
+                    peer_id=event.peer_id,
+                    random_id=0,
+                    message='Что-то пошло не так... Пожалуйста, загрузите гифку.'
+                )
+        else:
+            vk.messages.send(
+                peer_id = event.peer_id,
+                random_id = 0,
+                message = 'Бот работает исключительно с документами, причём GIF формата. Пожалуйста, загрузите документ.'
+            )
